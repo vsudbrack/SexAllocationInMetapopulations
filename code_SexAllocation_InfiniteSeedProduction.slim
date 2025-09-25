@@ -1,0 +1,428 @@
+// set up a simple neutral nonWF simulation
+initialize()
+{
+	initializeSLiMModelType("nonWF");
+	if(!exists("slimgui")) setSeed(REPLICATION_NUMBER); else setSeed(0);
+	
+	defineGlobal("END_GENERATION", 5e4); // End of simulation
+	defineGlobal("GENERATION", 0); // Counter for generations
+	defineGlobal("PRINT_START_GENERATION", 100); // End of simulation
+	defineGlobal("MIDGENERATION", F); // Mid-generation is a recolonization intermediate step between "true" generations
+	
+	// Demographics	
+	defineConstant("NUMBER_DEMES", 500);
+	defineConstant("POP_SIZE", 100);
+	
+	// Migration rates
+	if(!exists("MIG_RATE_POLEN")) defineConstant("MIG_RATE_POLEN", 0.0 );
+	defineConstant("MIG_RATE_SEEDS", 0.1 );
+	defineConstant("MIG_FACTOR_PHYLO_SEEDS", (1 - MIG_RATE_SEEDS) );
+	defineConstant("MIG_FACTOR_PARA_SEEDS", MIG_RATE_SEEDS / (NUMBER_DEMES - 1));
+	defineConstant("MIG_FACTOR_PHYLO_POLEN", (1 - MIG_RATE_POLEN) );
+	defineConstant("MIG_FACTOR_PARA_POLEN", MIG_RATE_POLEN / (NUMBER_DEMES - 1));
+	
+	// Extinction dynamics
+	defineConstant("EXTINCTION_RATE", 0.5 );
+	defineConstant("DEME_AVERAGE_LIFETIME", (1.0-EXTINCTION_RATE)/EXTINCTION_RATE );
+	defineConstant("RECOLONIZATION_MODEL_PROPAGULE_POOL", F); // F for MIGRANT_POOL
+	defineConstant("RECOLONIZATION_GROUP_SIZE", 2 ); // k < POP_SIZE
+	
+	// Genomic information
+	defineConstant("GENOME_SIZE", 20); // Number of neutral loci unlinked to sex allocation 
+	defineConstant("MUT_RATE_CA", 0.01); // Mutation rate of continum of alleles
+	defineConstant("MUT_RATE_NEUTRAL", 1e-4); // Mutation rate of neutral
+	defineConstant("MUT_EFFECT_SD", 0.01); // SD of mutation effects
+	
+	// Selfing rate
+	if(!exists("SELF_RATE")) defineConstant("SELF_RATE", 0.2 );
+	
+	// Seeting the genomes
+	defineConstant("RECOMB_RATE", 0.5);
+	/// ## Chromosome 1 (Selected)
+	initializeChromosome(1, symbol="S", name="SELECTED");
+	initializeMutationRate(MUT_RATE_CA);
+	initializeMutationType("m1", 0.5, "n", 0.0, MUT_EFFECT_SD); // QTLs
+	m1.convertToSubstitution = F;
+	m1.mutationStackPolicy = "l";
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, 0);
+	initializeRecombinationRate(RECOMB_RATE);
+	
+	/// ## Chromosome 2 (Non-Selected)
+	initializeChromosome(2, symbol="NS", name="NEUTRAL");
+	initializeMutationRate(MUT_RATE_NEUTRAL);
+	initializeMutationType("m0", 0.5, "f", 0.0); // Neutral alleles
+	m0.convertToSubstitution = F;
+	m0.mutationStackPolicy = "l";
+	initializeGenomicElementType("g2", m0, 1.0);
+	initializeGenomicElement(g2, 0, GENOME_SIZE - 1);
+	initializeRecombinationRate(RECOMB_RATE);
+	
+	// Outputs
+	defineGlobal("MEAN_PHENO", NAN);
+	defineGlobal("MEAN_PHENO_EXPECTED", 0.5 * (1 + SELF_RATE + (1 - SELF_RATE) / POP_SIZE));
+	defineGlobal("MEAN_PHENO_EXPECTED_EXCT", 0.5 * (1 + SELF_RATE + (EXTINCTION_RATE + 2 * MIG_RATE_SEEDS - MIG_RATE_POLEN) * (POP_SIZE * EXTINCTION_RATE + RECOLONIZATION_GROUP_SIZE) / POP_SIZE / (EXTINCTION_RATE * (RECOLONIZATION_GROUP_SIZE - 1) + (2 * MIG_RATE_SEEDS + MIG_RATE_POLEN) * RECOLONIZATION_GROUP_SIZE)));
+	
+	// Plotting the phenotypes
+	if(exists("slimgui")){
+		plot = slimgui.createPlot(title="phenotypes", xrange=c(-1, 8e3), yrange=c(0, 1), xlab="Time", ylab="Allocation", width=400, height=400, fullBox=F);
+		plot.abline(a=ifelse(EXTINCTION_RATE > 0, MEAN_PHENO_EXPECTED_EXCT, MEAN_PHENO_EXPECTED), b=0, color="darkgray");
+	} else {
+		writeFile(filename('all'), "#"+date()+" "+time());
+	}
+}
+
+/***/
+/// ## Mutation
+mutation(m1) /* Continuum of alleles */
+{
+	parentalMut = haplosome.mutationsOfType(m1);
+	if (size(parentalMut) > 0)
+	{
+		prev = parentalMut.selectionCoeff;
+		mut.setSelectionCoeff(min(1.0, max(0.0, prev + mut.selectionCoeff)));
+	}
+	return T;
+}
+
+mutationEffect(m1) { return 1.0; }
+
+/***/
+/// ## Initialization
+1 first()
+{
+	// Start populations
+	for (i in 1:NUMBER_DEMES) sim.addSubpop(i, POP_SIZE);
+	
+	// Set age of the new adults by hand
+	sim.subpopulations.individuals.age = 1;
+	
+	// Start all Sex Allocation alleles randomly between 0 and 1
+	for (haplo1 in sim.subpopulations.haplosomesForChromosomes(1))
+		//haplo1.addNewMutation(m1, runif(1, 0.0, 1.0), 0);
+		haplo1.addNewMutation(m1, MEAN_PHENO_EXPECTED_EXCT, 0);
+
+	
+	// Start all neutral alleles as wildtype
+	haplo2 = sim.subpopulations.haplosomesForChromosomes(2);
+	haplo2.addNewDrawnMutation(m0, seqLen(GENOME_SIZE));
+	
+	// Start plot
+	inds = sim.subpopulations.individuals;
+	inds.tagF = inds.sumOfMutationsOfType(m1)/2.0;
+	defineGlobal("MEAN_PHENO", mean(inds.tagF));
+	if(exists("slimgui")) updatePhenoPlot(0);
+}
+
+/***/
+/// ## Phenotypes
+// Calculating traits before Reproduction()
+first()
+{
+	inds = sim.subpopulations.individuals;
+	inds.tagF = inds.sumOfMutationsOfType(m1)/2.0;
+	
+	// Calculates population mean and variances
+	defineGlobal("MEAN_PHENO", mean(inds.tagF));
+	defineGlobal("VARB_PHENO", var(sapply(sim.subpopulations, "mean(applyValue.individuals.tagF);")));
+	defineGlobal("VARW_PHENO", mean(sapply(sim.subpopulations, "var(applyValue.individuals.tagF);")));
+}
+
+/***/
+/// ## Extinctions
+first(){
+	// No extinction in midgenerations
+	if (MIDGENERATION) return;
+	
+	// Sample number of demes going extinct
+	nExt = rbinom(1, NUMBER_DEMES, EXTINCTION_RATE);
+	
+	// Skip if there is no extinctions
+	if (nExt == 0) return;
+	
+	// Sample populations that are going extinct uniformly at random
+	popExt = sample(sim.subpopulations, nExt);
+	
+	// Dead individuals
+	sim.killIndividuals(popExt.individuals);
+}
+
+/***/
+/// ## Reproduction
+reproduction()
+{
+	pops = sim.subpopulations;
+	if (MIDGENERATION)
+	{
+		// Bring recolonized populations back to carrying capacity
+		reproducingPopulations = pops[pops.individualCount == RECOLONIZATION_GROUP_SIZE];
+		
+		// Age colonizers so they die during survive()
+		reproducingPopulations.individuals.age = 3;
+		
+		for (pop in reproducingPopulations)
+		{
+			// Sample all mothers and father among recolonizers
+			mothers = sample(pop.individuals, POP_SIZE, replace=T, weights = pop.individuals.tagF);
+			fathers = sample(pop.individuals, POP_SIZE, replace=T, weights = 1.0 - pop.individuals.tagF);
+			
+			for (mother in mothers, father in fathers){
+				if(event(SELF_RATE)){
+					// The offspring is selfed
+					pop.addSelfed(mother);
+				} else {
+					// The offspring is outcrossed
+					pop.addCrossed(mother, father);
+				}
+			} // End of loop among parents
+		} // End of loop among extinct demes
+	} // End of Midgeneration
+	else
+	{
+		// Information about all individuals in the metapopulation
+		allInds = sim.subpopulations.individuals; // All individuals
+		allIndsSubpops = allInds.subpopulation.id; // All individuals' subpops
+		
+		// Allocations
+		allXF = allInds.tagF;
+		allXM = 1.0 - allInds.tagF;
+		
+		for (pop in pops){
+			if(pop.individualCount == 0){
+				if(RECOLONIZATION_MODEL_PROPAGULE_POOL){
+					// Recolonization of extinct demes following the propagule model
+					// Samples the source deme
+					extantDemes = pops[pops.individualCount > 0];
+					totalSeeds = sapply(extantDemes, "sum(applyValue.individuals.tagF);");
+					sourceDeme = sample(extantDemes, 1, weights = totalSeeds);
+					// Sample all mothers
+					mothers = sample(sourceDeme.individuals, RECOLONIZATION_GROUP_SIZE, replace=T, weights = sourceDeme.individuals.tagF);
+				} else {
+					// Reproduction in extinct demes following the migrant pool model
+					// Sample all mothers (no need to have weights for seed dispersal because all individuals carry the same weight)
+					mothers = sample(allInds, RECOLONIZATION_GROUP_SIZE, replace=T, weights = allXF);
+				}
+			} else {
+				// Reproduction in extant demes
+				migFactors = rep(MIG_FACTOR_PARA_SEEDS, size(allInds));
+				migFactors[allIndsSubpops == pop.id] = MIG_FACTOR_PHYLO_SEEDS;
+				// Sample all mothers
+				mothers = sample(allInds, POP_SIZE, replace=T, weights = migFactors * allXF);
+			}
+			
+			for (mother in mothers){
+				// The offspring is selfed
+				if(event(SELF_RATE)){
+					pop.addSelfed(mother);
+					next;
+				}
+				
+				// The offspring is outcrossed
+				if(MIG_RATE_POLEN > 0.0){
+					migFactorPolen = rep(MIG_FACTOR_PARA_POLEN, size(allInds));
+					migFactorPolen[allIndsSubpops == mother.subpopulation.id] = MIG_FACTOR_PHYLO_POLEN;
+					father = sample(allInds, 1, weights = migFactorPolen * allXM);
+				}  else { // No polen dispersal (optimization)
+					father = sample(mother.subpopulation.individuals, 1, weights = 1.0 - mother.subpopulation.individuals.tagF);
+				}
+				
+				pop.addCrossed(mother, father);
+			} // End loop among mothers
+		} // End loop across subpopulations
+	}
+	
+	// Disabling the callback
+	self.active = 0;
+}
+
+/***/
+/// ## Survival 
+survival() {
+	if (MIDGENERATION){
+		return individual.age < 2; // Everybody survives midgeneration but recolonizers (whose age is 3)
+	} else {
+		return (individual.age == 0);
+	}
+}
+
+/***/
+/// ## Generation/Midgeneration management
+late()
+{
+	// After a generation comes a midgeneration if needed
+	if (any(sim.subpopulations.individualCount < POP_SIZE)) {
+		defineGlobal("MIDGENERATION", T);
+		return;
+	}
+	
+	// After a midgeneration always comes a generation
+	defineGlobal("MIDGENERATION", F);
+	
+	// Increment the GENERATION counter
+	defineGlobal("GENERATION", GENERATION + 1);
+	
+	/// Analysis
+	if(exists("slimgui")) updatePhenoPlot(GENERATION);
+	
+	if (GENERATION >= PRINT_START_GENERATION & GENERATION % 100 == 0){
+		if(exists("slimgui")) {
+			fs = calc_Fstats(tableFormat=T);
+			catn(fs);
+		} else {
+			fs = paste(c(GENERATION, MEAN_PHENO, VARB_PHENO, VARW_PHENO, calc_Fstats()));
+			writeFile(filename('all'), fs, append=T);
+		}
+	}
+	
+	if(GENERATION == END_GENERATION) sim.simulationFinished();
+}
+
+1e6 late() { sim.simulationFinished(); }
+
+/***/
+/// ## Functions
+function (logical)event(float prob) { return asLogical(rbinom(1, 1, prob)); }
+
+function (void)updatePhenoPlot(integer gen) {
+	if (gen % 100 == 0)
+	{
+		plot = slimgui.plotWithTitle("phenotypes");
+		phenos = sample(sim.subpopulations.individuals, 500).sumOfMutationsOfType(m1)/2.0;
+		plot.points(gen + runif(length(phenos), 0, 100), phenos, symbol=16, size=0.1);
+		plot.lines(seq(gen, gen + 99), rep(MEAN_PHENO, 100), color="blue", lwd=3.0);
+	}
+}
+
+
+function (string)filename(string id)
+{
+	x = "/work/FAC/FBM/DEE/cmullon/default/sexAllocation/RandomizedParameters_";
+	//x = "~/Downloads/Trait_"; // change this line for filename and folder place
+	x = x + ifelse(SELF_RATE > 0.0, "fullModel_", ifelse(MIG_RATE_POLEN > 0.0, "randomMating_", "randomMatingNoPolenDisp_"));
+	x = x + REPLICATION_NUMBER + "_";
+	if (id == 'all') x = x + "allInfo";
+	x = x + "_selfing=" + SELF_RATE + "_Lneutral=" + GENOME_SIZE;
+	x = x + "_lifetimeDeme=" + DEME_AVERAGE_LIFETIME + "_k=" + RECOLONIZATION_GROUP_SIZE + "_N=" + POP_SIZE;
+	x = x + ifelse(RECOLONIZATION_MODEL_PROPAGULE_POOL, "_propagule", "_migrant") + "_dPolen=" + MIG_RATE_POLEN + "_dSeeds=" + MIG_RATE_SEEDS;
+	return x + "_.txt";
+}
+
+/***/
+/// Probabilities of coalescence (Q1, Q2, and Q3)
+function (float)calc_Q1(integer pos){
+	q1 = 1.0 - calc_HO(pos);
+	return q1;
+}
+
+function (float)calc_Q2(integer pos){
+	muts = sim.mutationsOfType(m0);
+	muts = muts[muts.position == pos];
+	
+	sumPijk = sapply(sim.subpopulations, "sum(sim.mutationFrequencies(applyValue, muts)^2.0);" );
+	
+	Nj = sim.subpopulations.individualCount;
+	weightNj = Nj*(2.0*Nj - 1.0);
+	
+	q2 = sum(weightNj*sumPijk)/sum(weightNj);
+	return q2;
+}
+
+function (float)calc_Q3(integer pos){
+	muts = sim.mutationsOfType(m0);
+	muts = muts[muts.position == pos];
+	pij = sim.mutationFrequencies(NULL, muts);
+	return sum(pij ^ 2.0);
+}
+
+function (float)calc_Nc(integer pos){
+	muts = sim.mutationsOfType(m0);
+	muts = muts[muts.position == pos];
+	
+	if (size(muts) <= 1) return 0.0; // No mutation segregating
+	
+	nik = sim.subpopulations.individuals.haplosomesForChromosomes(2).mutationCountsInHaplosomes(muts);
+	S1 = sum(nik); // Always = 2N?
+	S2 = sum(nik^2.0);
+	return (S1-S2/S1)/(size(muts)-1);
+}
+
+/***/
+/// Calculate heterozygosities
+function (float)calc_HO(integer pos){
+	inds = sim.subpopulations.individuals;
+	het = sapply(inds, "calcPairHeterozygosity(applyValue.haplosomesForChromosomes(2, 0), applyValue.haplosomesForChromosomes(2, 1), start=pos, end=pos, infiniteSites = F);");
+	Ho = mean(het);
+	return Ho;
+}
+
+function (float)calc_HS(integer pos){
+	muts = sim.mutationsOfType(m0);
+	mutsPos = muts[muts.position == pos];
+	Hs = sapply(sim.subpopulations, "1.0 - sum(sim.mutationFrequencies(applyValue, mutsPos)^2);");
+	return mean(Hs);
+}
+
+function (float)calc_HT(integer pos){
+	muts = sim.mutationsOfType(m0);
+	mutsPos = muts[muts.position == pos];
+	Ht = 1.0 - sum(sim.mutationFrequencies(NULL, mutsPos)^2);
+	return Ht;
+}
+
+/***/
+/// F-statistics
+function (sf)calc_Fstats([logical$ tableFormat=F])
+{
+	// Compute the probabilities Qi for each position
+	q1 = sapply(seqLen(GENOME_SIZE), "calc_Q1(applyValue);");
+	q2 = sapply(seqLen(GENOME_SIZE), "calc_Q2(applyValue);");
+	q3 = sapply(seqLen(GENOME_SIZE), "calc_Q3(applyValue);");
+	nc = sapply(seqLen(GENOME_SIZE), "calc_Nc(applyValue);");
+	
+	// Compute F-statistics using Qi's
+	// Compute FIS
+	denom = sum(nc * (1.0 - q2));
+	FIS = ifelse(denom < 1e-8, NAN, sum((nc*(q1-q2)))/denom);
+	
+	// Compute FST
+	denom = sum(nc * (1.0 - q3));
+	FST = ifelse(denom < 1e-8, NAN, sum((nc*(q2-q3)))/denom);
+	
+	// Compute FST
+	FIT = ifelse(denom < 1e-8, NAN, sum((nc*(q1-q3)))/denom);
+	
+	// Compute the heterozygosities
+	Hs = sapply(seqLen(GENOME_SIZE), "calc_HS(applyValue);");
+	Ht = sapply(seqLen(GENOME_SIZE), "calc_HT(applyValue);");
+	
+	// Compute Josh's D
+	denom = sum(nc*(1.0 - Hs));
+	JostD = ifelse(denom < 1e-8, NAN, sum(nc*(Ht - Hs))/ denom * NUMBER_DEMES / (NUMBER_DEMES - 1.0));
+	
+	// Compute Gst
+	Hs = Hs[Ht>0]; // Filtering monomorphic loci out
+	nc = nc[Ht>0];
+	Ht = Ht[Ht>0];
+	denom = sum(nc*(1.0 - Hs)/(NUMBER_DEMES - 1.0 + Hs));
+	GST =ifelse(denom < 1e-8, NAN, sum(nc*(1.0 - Hs/Ht))/(NUMBER_DEMES-1.0)/denom );
+	
+	// Build a formatted table for display
+	if (tableFormat)
+	{
+		string = "F-Statistics for population at gen. " + sim.cycle + "\n";
+		string = string + "-----------------------------------------\n";
+		string = string + format("  FIS :  %.3f\n", FIS);
+		string = string + format("  FST :  %.3f\n", FST);
+		string = string + format("  FIT :  %.3f\n", FIT);
+		string = string + format("  JoD :  %.3f\n", JostD);
+		string = string + format("  GST :  %.3f\n", GST);
+		string = string + "-----------------------------------------";
+		return string;
+	}
+	else
+	{
+		return c(FIS, FST, FIT, JostD, GST);
+	}
+}
+
+
