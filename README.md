@@ -9,4 +9,3 @@
 
 3) The R scripts *plot_reproduceFig1.R* and *plot_FiniteSeeds.R* create the plots from the R dataframes saved by the previous script.
 
-4) The Mathematica file contains analytical derivations
