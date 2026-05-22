@@ -18,9 +18,9 @@ data %>%
   group_by(E, K) %>% 
   summarise(Z = mean(MEAN.Z), 
             dZ = sqrt(mean(VARB.Z+VARW.Z))) %>% 
-  ggplot(aes(x = E, y = Z, col=factor(K))) +
+  ggplot(aes(x = E, y = 1-Z, col=factor(K))) +
   geom_hline(yintercept = 0.5, col = "gray", lty="dashed") +
-  geom_errorbar(aes(ymin = Z-dZ, ymax = Z+dZ), width = 0.05, alpha = 0.5) +
+  geom_errorbar(aes(ymin = 1-Z-dZ, ymax = 1-Z+dZ), width = 0.05, alpha = 0.5) +
   geom_point(alpha = 0.75) +
   geom_line(data=filter(theo, SELF==0), aes(x = Nt, y=Value)) + 
   theme_classic() +
@@ -37,9 +37,9 @@ data %>%
   group_by(E, SELF) %>% 
   summarise(Z = mean(MEAN.Z), 
             dZ = sqrt(mean(VARB.Z+VARW.Z))) %>% 
-  ggplot(aes(x = E, y = Z, col=factor(SELF))) +
+  ggplot(aes(x = E, y = 1-Z, col=factor(SELF))) +
   geom_hline(yintercept = 0.5, col = "gray", lty="dashed") +
-  geom_errorbar(aes(ymin = Z-dZ, ymax = Z+dZ), width = 0.05, alpha = 0.5) +
+  geom_errorbar(aes(ymin = 1-Z-dZ, ymax = 1-Z+dZ), width = 0.05, alpha = 0.5) +
   geom_point(alpha = 0.75) + 
   geom_line(data=filter(theo, K == 2), aes(x = Nt, y=Value)) + 
   theme_classic() +
@@ -58,12 +58,12 @@ data %>%
             VARB.Z = mean(VARB.Z),
             VARW.Z = mean(VARW.Z),
             GEN = mean(GEN)) %>% 
-  ggplot(aes(x = GEN, y = MEAN.Z)) +
-  geom_ribbon(aes(ymin = MEAN.Z-sqrt(VARB.Z+VARW.Z), 
-                    ymax = MEAN.Z+sqrt(VARB.Z+VARW.Z)), 
+  ggplot(aes(x = GEN, y = 1-MEAN.Z)) +
+  geom_ribbon(aes(ymin = 1-MEAN.Z-sqrt(VARB.Z+VARW.Z), 
+                    ymax = 1-MEAN.Z+sqrt(VARB.Z+VARW.Z)), 
                 alpha = 0.5, fill = "red") +
-  geom_ribbon(aes(ymin = MEAN.Z-sqrt(VARB.Z), 
-                    ymax = MEAN.Z+sqrt(VARB.Z)), 
+  geom_ribbon(aes(ymin = 1-MEAN.Z-sqrt(VARB.Z), 
+                    ymax = 1-MEAN.Z+sqrt(VARB.Z)), 
                 alpha = 0.5, fill = "darkgreen") +
   geom_line() +
   geom_hline(yintercept = 0.5, col = "gray", lty = "dashed") +
@@ -108,7 +108,7 @@ r2_labels = data_long %>%
 # Plot with regression lines and R²
 data_long %>% 
   filter(Metric %in% c("FST", "FIS", "FIT") ) %>% 
-ggplot(aes(x = MEAN.Z, y = Value)) +
+ggplot(aes(x = 1-MEAN.Z, y = Value)) +
   geom_point(color = "gray", alpha = 0.4, size = 0.5) +
   geom_smooth(method = "lm", se = FALSE, color = "black", size = 0.5) +
   geom_text(data = filter(r2_labels, Metric %in% c("FST", "FIS", "FIT") ), aes(x = x, y = y, label = label),
@@ -128,7 +128,7 @@ ggplot(aes(x = MEAN.Z, y = Value)) +
 
 data_long %>%
   #filter(Metric %in% c("FST", "FIS", "FIT")) %>%
-  ggplot(aes(x = MEAN.Z, y = Value, col = factor(TYPE), pch = factor(TYPE))) +
+  ggplot(aes(x = 1-MEAN.Z, y = Value, col = factor(TYPE), pch = factor(TYPE))) +
   geom_point(alpha = 0.5, size = 0.55) +       # Observed points
   geom_smooth(method = "loess", se = TRUE, size = 0.75, span = 0.5) +  # LOESS curve
   facet_grid(Metric ~ MODEL) +
@@ -190,7 +190,7 @@ ggplot(scores, aes(x = PC1, y = PC2, color = MEAN.Z_color)) +
 #####################
 data %>%
   filter(K>1) %>% 
-  ggplot(aes(x = MEAN.Z, fill = factor(DISP))) +
+  ggplot(aes(x = 1-MEAN.Z, fill = factor(DISP))) +
   geom_density(aes(y = after_stat(density)), position = "identity", 
                alpha = 0.6, col = "white") +
   facet_grid(cols = vars(MODEL)) +
@@ -200,7 +200,7 @@ ggsave("~/SexAllocationEvolution/figs/fig_PropVSMigr.svg", height = 3, width = 6
 
 data %>%
   filter(MODEL == "randomMating") %>% 
-  ggplot(aes(col = MEAN.Z, pch = factor(MEAN.Z<0.5), x = MP-2*MS, y = e)) +
+  ggplot(aes(col = 1-MEAN.Z, pch = factor(MEAN.Z>0.5), x = MP-2*MS, y = e)) +
   geom_point(alpha = 0.6, size = 2.0) +
   geom_segment(x = 0, y = 0, xend = 0.1, yend = 0.1, col = "black", lty = "dashed") +
   facet_grid(cols = vars(DISP)) +
