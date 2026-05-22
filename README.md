@@ -9,3 +9,6 @@
 
 3) The R scripts *plot_reproduceFig1.R* and *plot_FiniteSeeds.R* create the plots from the R dataframes saved by the previous script.
 
+
+
+Please notice that the SLiM code uses the sex allocation with respect to female function (i.e., z=0 is a fully male, while z=1 if a fully female individual). In the R scripts, the sex allocation is "switched" to align with the one in the manuscript. 
