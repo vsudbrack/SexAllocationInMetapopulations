@@ -27,7 +27,7 @@ data %>%
             MEAN.Z = mean(MEAN.Z),
             VART.Z = mean(VART.Z),
             GEN = mean(GEN)) %>% 
-  ggplot(aes(x = GEN, y = MEAN.Z, color = factor(K))) +
+  ggplot(aes(x = GEN, y = 1-MEAN.Z, color = factor(K))) +
   geom_line() +
   geom_hline(yintercept = 0.5, col = "gray", lty = "dashed") +
   facet_grid(rows = vars(E), cols = vars(FMAX, DENS.DENP)) +
@@ -55,7 +55,7 @@ data %>%
             MEAN.Z = mean(MEAN.Z),
             VART.Z = mean(VART.Z), 
             DZ = sqrt(VART.Z)) %>% 
-  ggplot(aes(x = E, y = MEAN.Z, pch = factor(K), color = factor(FMAX)
+  ggplot(aes(x = E, y = 1-MEAN.Z, pch = factor(K), color = factor(FMAX)
             )) +
   #geom_errorbar(aes(ymin = MEAN.Z-DZ, ymax = MEAN.Z+DZ), width = 0.1, alpha = 0.3) +
   #geom_line() + 
@@ -82,9 +82,9 @@ data %>%
             MEAN.Z = mean(MEAN.Z),
             VART.Z = mean(VART.Z), 
             DZ = sqrt(VART.Z)) %>% 
-  ggplot(aes(x = 100*FMAX, y = MEAN.Z, color = factor(K),
+  ggplot(aes(x = 100*FMAX, y = 1-MEAN.Z, color = factor(K),
   )) +
-  geom_errorbar(aes(ymin = MEAN.Z-DZ, ymax = MEAN.Z+DZ), width = 0.2, alpha = 0.25) +
+  geom_errorbar(aes(ymin = 1-MEAN.Z+DZ, ymax = 1-MEAN.Z-DZ), width = 0.2, alpha = 0.25) +
   geom_line(alpha = 0.7) + 
   geom_point(alpha = 0.7) +
   geom_point(data=filter(theo, SELF==0, E %in% c( 2, 5, 10)), aes(x = 5000, y=Value, col = factor(K)), 
